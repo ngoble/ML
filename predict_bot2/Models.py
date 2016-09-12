@@ -6,7 +6,7 @@ from keras.models import Sequential, load_model
 from keras.layers import Dense, Activation, Dropout
 from keras.layers import LSTM
 from predict_bot2.Massagers import Massagers
-from predict_bot2.Sigmoids import Normalizer
+from predict_bot2.Sigmoids import Normalizer, LogReturnsNormalizer
 
 import numpy as np
 import pandas as pd
@@ -19,7 +19,7 @@ class LSTM_Model(object):
         self.model.add(Dropout(dropout))
         self.model.add(Dense(output_dim=1))
         self.model.add(Activation("linear"))
-        self.model.compile(loss='mean_squared_error', optimizer='rmsprop')
+        self.model.compile(loss='mean_squared_error', optimizer='rmsprop', metrics=['accuracy'])
         self.look_back = look_back
 
     def save(self, filepath):
@@ -40,8 +40,10 @@ class LSTM_Model(object):
 
         x_data, y_data = Massagers.time_series(df, look_back=self.look_back)
 
-        score = np.sqrt(self.model.evaluate(x_data, y_data))
-        return score
+        score = self.model.evaluate(x_data, y_data)
+        print('hji')
+        print(score)
+        return score[1]*100
 
     def predict_np(self, predict_array):
         unshaped_x = predict_array
@@ -52,23 +54,28 @@ class LSTM_Model(object):
 
 class Predictor(object):
     def __init__(self, historic_data, days_out=10, look_back=1, neurons=4, epochs=20, validation_split=0.3,
-                 dropout=0.2,
-                 plot_training=False):
-        self.historic_df = historic_data
+                 dropout=0.2, plot_training=False):
+        self.historic_data = historic_data
         self.days_out = days_out
         self.look_back = look_back
-        self.normalizer = Normalizer(min_=-1, max_=1)
-        self.norm_df = self.normalizer.normalize(historic_data)
+        # self.normalizer = Normalizer(min_=0, max_=1)
+        # self.normalized_data = self.normalizer.normalize(historic_data)
+        self.normalizer = LogReturnsNormalizer(min_=0, max_=1)
+        self.normalized_data = self.normalizer.normalize(self.historic_data)
 
         self.lstm_model = LSTM_Model(look_back=self.look_back, neurons=neurons, dropout=dropout)
-        self.history = self.lstm_model.train_model(self.norm_df, validation_split=validation_split, epochs=epochs)
+        self.history = self.lstm_model.train_model(self.normalized_data, validation_split=validation_split, epochs=epochs)
 
         if plot_training:
             self.plot_learning()
 
         self.lstm_model.save('model.h5')
         # self.lstm_model = load_model('model.h5')
-        self.residuals = self.get_residual_distribution(self.norm_df)
+        self.residuals = self.normalized_data.flatten()
+
+    def test_model(self, test_data):
+        norm_test_data = self.normalizer.normalize(test_data)
+        return self.lstm_model.evaluate_model(norm_test_data)
 
     def plot_learning(self):
         plt.plot(self.history.history['loss'])
@@ -79,10 +86,6 @@ class Predictor(object):
         plt.legend(['train', 'test'], loc='upper left')
         plt.show()
 
-    def get_residual_distribution(self, df):
-        fit, actual = self.lstm_model.predict_with_known(df)
-        return fit - actual
-
     def randomize_window(self, window, num=1):
         mean = window.mean()
         random_index = np.random.choice(len(window), size=num, replace=False)
@@ -92,43 +95,25 @@ class Predictor(object):
         return window
 
     def randomize_window_np(self, window):
-        mean = np.mean(window, axis=1)
         random_index = np.random.choice(window.shape[1], size=window.shape[0], replace=True)
         random_values = np.random.choice(self.residuals, size=window.shape[0], replace=True)
 
         window[(np.arange(window.shape[0]), random_index)] = \
-            np.reshape(random_values, (random_values.shape[0], 1)) + mean
+            np.reshape(random_values, (random_values.shape[0], 1))
 
         return window
 
-    def predict_future_price(self):
-        prediction = np.array([])
-        window_df = self.norm_df.iloc[-self.look_back:]
-
-        for i in range(self.days_out):
-
-            result = self.lstm_model.predict(window_df)
-
-            window_df = window_df.shift(-1)
-            window_df.iloc[-1] = result
-            window_df = self.randomize_window(window_df)
-
-            prediction = np.append(prediction, result)
-
-        prediction = self.normalizer.unnormalize(pd.DataFrame(prediction))
-
-        return prediction
-
     def initialize_window(self, num_sims):
-        window = np.array([self.norm_df.iloc[-self.look_back:].values])
+        window = np.array([self.normalized_data[-self.look_back:]])
         window = np.repeat(window, num_sims, axis=0)
         return window
 
     def predict_many_prices(self, num_sims):
         window = self.initialize_window(num_sims)
-        prediction = np.zeros([num_sims, self.days_out])
+        prediction = np.zeros([num_sims, self.days_out+1])
+        prediction[:, 0] = window[:, -1].flatten()
 
-        for i in range(self.days_out):
+        for i in range(1, self.days_out + 1):
 
             result = self.lstm_model.predict_np(window)
             window = np.roll(window, -1)
@@ -137,7 +122,7 @@ class Predictor(object):
 
             prediction[:, i] = result
 
-        prediction = self.normalizer.unnormalize(pd.DataFrame(prediction))
+        prediction = self.normalizer.unnormalize(prediction)
 
         return prediction
 

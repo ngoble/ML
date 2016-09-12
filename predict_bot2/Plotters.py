@@ -8,36 +8,25 @@ import seaborn as sns
 class Plotter(object):
 
     @classmethod
-    def plot_simulations(cls, historic, simulations):
-        num_paths = 10
-        highest_q = 0.99
-        high_q = 0.95
-        low_q = 0.05
-        lowest_q = 0.01
+    def plot_simulations(cls, historic, simulations, num_paths_plotted=10, high_q=95, low_q=5):
 
         simulations = simulations.T
-        simulations.index = np.arange(start=historic.index[-1] + 1,
-                                      stop=historic.index[-1] + len(simulations) + 1)
-        plt.plot(historic)
-        plt.plot(simulations.iloc[:, :num_paths], color='#0e3e22', alpha=0.2, linewidth=1)
 
-        upper_quantile = simulations.quantile(high_q, axis=1)
-        lower_quantile = simulations.quantile(low_q, axis=1)
-        highest_quantile = simulations.quantile(highest_q, axis=1)
-        lowest_quantile = simulations.quantile(lowest_q, axis=1)
+        historic_index = np.arange(len(historic))
+        simulated_index = np.arange(len(historic) - 1, len(historic) + len(simulations) - 1)
 
-        plt.plot(upper_quantile, color='#0e3e22', alpha=0.7, linewidth=1.5)
-        plt.plot(lower_quantile, color='#0e3e22', alpha=0.7, linewidth=1.5)
-        plt.fill_between(simulations.index, upper_quantile, lower_quantile, alpha=0.4)
+        plt.plot(historic_index, historic)
+        plt.plot(simulated_index, simulations[:, :num_paths_plotted],
+                 color='#0e3e22', alpha=0.2, linewidth=1)
 
-        # plt.plot(highest_quantile, color='#0e3e22', alpha=0.7, linewidth=1.5)
-        # plt.plot(lowest_quantile, color='#0e3e22', alpha=0.7, linewidth=1.5)
-        # plt.fill_between(simulations.index, highest_quantile, lowest_quantile, alpha=0.4)
+        upper_quantile = np.percentile(simulations, high_q, axis=1)
+        lower_quantile = np.percentile(simulations, low_q, axis=1)
+        simulation_mean = np.mean(simulations, axis=1)
 
-        plt.plot(simulations.mean(axis=1), color='#e68a00', alpha=0.6, linewidth=2)
+        plt.plot(simulated_index, upper_quantile, color='#0e3e22', alpha=0.7, linewidth=1.5)
+        plt.plot(simulated_index, lower_quantile, color='#0e3e22', alpha=0.7, linewidth=1.5)
+        plt.fill_between(simulated_index, upper_quantile, lower_quantile, alpha=0.4)
 
-
+        plt.plot(simulated_index, simulation_mean, color='#e68a00', alpha=0.6, linewidth=2)
 
         plt.show()
-
-        return 0
