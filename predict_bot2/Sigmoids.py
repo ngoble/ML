@@ -38,6 +38,17 @@ class LogReturnsNormalizer(object):
 
         return simulated_rates
 
+    def unnormalize_array(self, norm_log_returns):
+        log_returns = self.scaler.inverse_transform(norm_log_returns)
+
+        simulated_rates = np.empty((np.shape(log_returns)))
+        simulated_rates[0] = self.last_value
+
+        for row in range(1, len(log_returns)):
+            simulated_rates[row] = self.log_return_to_rate(log_returns[row], simulated_rates[row-1])
+
+        return simulated_rates
+
     @staticmethod
     def rates_to_log_returns(rates):
         log_returns = np.log(rates[1:] / rates[:-1])

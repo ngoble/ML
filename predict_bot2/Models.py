@@ -6,20 +6,20 @@ from keras.models import Sequential, load_model
 from keras.layers import Dense, Activation, Dropout
 from keras.layers import LSTM
 from predict_bot2.Massagers import Massagers
-from predict_bot2.Sigmoids import Normalizer, LogReturnsNormalizer
+from predict_bot2.Sigmoids import LogReturnsNormalizer
 
 import numpy as np
-import pandas as pd
 
 
 class LSTM_Model(object):
     def __init__(self, look_back, neurons, dropout):
         self.model = Sequential()
-        self.model.add(LSTM(neurons, input_dim=look_back, return_sequences=False))
-        self.model.add(Dropout(dropout))
+        self.model.add(LSTM(neurons, input_dim=look_back, return_sequences=True))
+        # self.model.add(Dropout(dropout))
+        self.model.add(LSTM(neurons, return_sequences=False))
         self.model.add(Dense(output_dim=1))
         self.model.add(Activation("linear"))
-        self.model.compile(loss='mean_squared_error', optimizer='rmsprop', metrics=['accuracy'])
+        self.model.compile(loss='mean_squared_error', optimizer='rmsprop')
         self.look_back = look_back
 
     def save(self, filepath):
@@ -39,11 +39,8 @@ class LSTM_Model(object):
     def evaluate_model(self, df):
 
         x_data, y_data = Massagers.time_series(df, look_back=self.look_back)
-
-        score = self.model.evaluate(x_data, y_data)
-        print('hji')
-        print(score)
-        return score[1]*100
+        score = self.model.predict(x_data)
+        return y_data.flatten(), score
 
     def predict_np(self, predict_array):
         unshaped_x = predict_array
@@ -75,7 +72,15 @@ class Predictor(object):
 
     def test_model(self, test_data):
         norm_test_data = self.normalizer.normalize(test_data)
-        return self.lstm_model.evaluate_model(norm_test_data)
+        actual, fitted = self.lstm_model.evaluate_model(norm_test_data)
+        fitted = fitted.flatten()
+
+        actual = self.normalizer.unnormalize_array(actual)
+        fitted = self.normalizer.unnormalize_array(fitted)
+
+        plt.plot(actual)
+        plt.plot(fitted)
+        plt.show()
 
     def plot_learning(self):
         plt.plot(self.history.history['loss'])
